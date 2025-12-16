@@ -441,6 +441,7 @@
 
     let chartRadarFull, chartMapFull, chartLineFull, chartGraphFull;
     let chartAccoladesPie, chartOrgBar, chartGrammyLine;
+    let currentRadarSelection = null; // State for radar toggle
 
     // Timeline Data
     const mainAlbumData = {
@@ -882,6 +883,62 @@
         ]
       });
 
+      // ============================================
+      // FIX: Implement Radar Series Toggling
+      // ============================================
+      window.toggleRadarSeries = (seriesName, element) => {
+        if (!chartRadarFull) return;
+
+        // Reset visual state of all legend items
+        document.querySelectorAll('.album-legend-item').forEach(el => {
+           el.classList.remove('opacity-100');
+           el.classList.add('opacity-30'); // dim all initially
+        });
+
+        // Determine Action
+        if (currentRadarSelection === seriesName) {
+            // "Deselect" -> Show All
+            currentRadarSelection = null;
+
+            // Show all series in chart
+            ['Discovery', 'RAM', 'Homework', 'Human After All'].forEach(name => {
+                chartRadarFull.dispatchAction({
+                    type: 'legendSelect',
+                    name: name
+                });
+            });
+
+            // Restore all legend items to bright
+            document.querySelectorAll('.album-legend-item').forEach(el => {
+               el.classList.remove('opacity-30');
+               el.classList.add('opacity-100');
+            });
+
+        } else {
+            // "Select" -> Show One
+            currentRadarSelection = seriesName;
+
+            // Highlight the clicked one
+            element.classList.remove('opacity-30');
+            element.classList.add('opacity-100');
+
+            // Update chart visibility
+            ['Discovery', 'RAM', 'Homework', 'Human After All'].forEach(name => {
+                if (name === seriesName) {
+                    chartRadarFull.dispatchAction({
+                        type: 'legendSelect',
+                        name: name
+                    });
+                } else {
+                    chartRadarFull.dispatchAction({
+                        type: 'legendUnSelect',
+                        name: name
+                    });
+                }
+            });
+        }
+      };
+
       const worldJson = await fetchMapData();
       chartMapFull = echarts.init(document.getElementById('chart-map-full'));
       const { scatterData, linesData } = getTourData();
@@ -892,34 +949,35 @@
           geo: { map: 'world', roam: 'move', zoom: 1.2, label: { show: false }, itemStyle: { areaColor: '#1f2937', borderColor: '#374151', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#374151' } } },
           series: [{ type: 'lines', coordinateSystem: 'geo', data: linesData, zlevel: 1, effect: { show: true, period: 4, trailLength: 0.5, color: '#00f3ff', symbolSize: 4 }, lineStyle: { color: 'rgba(0, 243, 255, 0.1)', width: 1, opacity: 0.4, curveness: 0.2 } }, { type: 'effectScatter', coordinateSystem: 'geo', data: scatterData, symbolSize: 10, itemStyle: { color: '#00f3ff', shadowBlur: 10, shadowColor: '#00f3ff' }, rippleEffect: { brushType: 'stroke', scale: 4 }, label: { show: false }, zlevel: 2 }]
         });
-      // ✅ FIX: expose zoom controls for the map
-window.zoomMap = (factor) => {
-  if (!chartMapFull) return;
+        
+        // Expose zoom controls for the map
+        window.zoomMap = (factor) => {
+          if (!chartMapFull) return;
 
-  const opt = chartMapFull.getOption();
-  const geo = opt.geo && opt.geo[0] ? opt.geo[0] : {};
-  const currentZoom = typeof geo.zoom === 'number' ? geo.zoom : 1.2;
+          const opt = chartMapFull.getOption();
+          const geo = opt.geo && opt.geo[0] ? opt.geo[0] : {};
+          const currentZoom = typeof geo.zoom === 'number' ? geo.zoom : 1.2;
 
-  // next zoom
-  let nextZoom = currentZoom * factor;
+          // next zoom
+          let nextZoom = currentZoom * factor;
 
-  // clamp to prevent disappearing / too huge
-  nextZoom = Math.max(0.6, Math.min(6, nextZoom));
+          // clamp to prevent disappearing / too huge
+          nextZoom = Math.max(0.6, Math.min(6, nextZoom));
 
-  // preserve current center if available
-  const nextCenter = geo.center ? geo.center : undefined;
+          // preserve current center if available
+          const nextCenter = geo.center ? geo.center : undefined;
 
-  chartMapFull.setOption(
-    {
-      geo: {
-        zoom: nextZoom,
-        ...(nextCenter ? { center: nextCenter } : {})
+          chartMapFull.setOption(
+            {
+              geo: {
+                zoom: nextZoom,
+                ...(nextCenter ? { center: nextCenter } : {})
+              }
+            },
+            false
+          );
+        };
       }
-    },
-    false
-  );
-};
-}
 
       chartLineFull = echarts.init(document.getElementById('chart-line-full'));
       const xDataLine = ['2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'];
