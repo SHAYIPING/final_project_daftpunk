@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DAFT PUNK | Visualized Legacy</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=Courier+New&display=swap" rel="stylesheet">
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --neon-blue: #00f3ff;
+      --gold: #ffd700;
+      --silver: #C0C0C0;
+      --bg-color: #020204;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+      overflow-y: scroll;
+    }
+
+    /* 滚动条（全局） */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #000; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--neon-blue); }
+
+    /* 给 data-modal 用的滚动条 class */
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #000; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--neon-blue); }
+
+    .neon-text { text-shadow: 0 0 10px rgba(0, 243, 255, 0.5); }
+    .stroke-text { -webkit-text-stroke: 1px var(--neon-blue); color: transparent; }
+
+    /* =========================
+       UPDATED: Word Tag Styles
+       (Modified for zoom and rotate interaction)
+    ========================== */
+    .word-tag {
+      /* Use CSS variable for initial rotation */
+      transform: rotate(var(--tag-rotate, 0deg));
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy transition */
+      cursor: pointer;
+      position: relative;
+      z-index: 10;
+      display: inline-block;
+    }
+
+    .word-tag:hover {
+      /* Magnify (scale) and Straighten (rotate 0) or spin slightly */
+      transform: scale(1.5) rotate(0deg);
+      z-index: 100; /* Bring to front */
+      filter: brightness(1.4) drop-shadow(0 0 10px rgba(255,255,255,0.5));
+      text-shadow: 0 0 20px currentColor;
+    }
+
+    /* 头盔 Canvas */
+    #hero-canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100vh;
+      z-index: 0;
+      opacity: 1;
+    }
+
+    /* 星空 Canvas（全局背景） */
+    #star-canvas {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100vh;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    /* hero loading 文案 */
+    #loading {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--neon-blue);
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      letter-spacing: 2px;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      z-index: 20;
+    }
+
+    .instruction {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 2px;
+    }
+
+    /* Timeline Styles */
+    .timeline-container { position: relative; perspective: 1500px; padding: 40vh 0; overflow: visible; }
+    .timeline-track { position: relative; transform-style: preserve-3d; }
+    .timeline-spine {
+      position: absolute; left: 50%; top: -50vh; bottom: -50vh; width: 1px;
+      background: linear-gradient(to bottom, transparent, rgba(0, 243, 255, 0.5), transparent);
+      transform: translateX(-50%); z-index: 0; box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+    }
+    .timeline-node-group {
+      position: relative; display: flex; justify-content: center; align-items: center;
+      margin-bottom: -100px; padding-bottom: 100px; transform-style: preserve-3d; pointer-events: none;
+    }
+    .timeline-node-group:nth-child(even) { flex-direction: row-reverse; }
+    .year-marker {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) translateZ(1px);
+      background: #000; border: 1px solid rgba(0, 243, 255, 0.3); color: var(--neon-blue);
+      padding: 2px 6px; font-family: 'Courier New', monospace; font-size: 11px; z-index: 10;
+      box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+    }
+    .connector-line {
+      display: block; position: absolute; height: 1px;
+      background: linear-gradient(90deg, var(--neon-blue), transparent);
+      width: 20%; top: 50%; z-index: 5; opacity: 0;
+    }
+    .timeline-node-group:nth-child(odd) .connector-line { left: 50%; transform-origin: left center; }
+    .timeline-node-group:nth-child(even) .connector-line { right: 50%; transform-origin: right center; transform: scaleX(-1); }
+    .card-wrapper {
+      width: 32%; max-width: 300px; margin-left: 18%; perspective: 1000px;
+      cursor: pointer; pointer-events: auto; will-change: transform, opacity;
+    }
+    .timeline-node-group:nth-child(even) .card-wrapper { margin-left: 0; margin-right: 18%; text-align: right; }
+    .visual-card {
+      position: relative; background: rgba(5, 5, 5, 0.9); border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 0; overflow: visible; transition: border-color 0.4s, background-color 0.4s;
+    }
+    .visual-card:hover {
+      border-color: var(--neon-blue); z-index: 50; background: rgba(20, 20, 20, 1);
+      box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+    }
+    .card-image-box { height: 140px; width: 100%; overflow: hidden; background: #000; position: relative; }
+    .card-image-box img { width: 100%; height: 100%; object-fit: cover; transition: transform 1.5s ease-out; opacity: 0.8; filter: grayscale(30%); }
+    .visual-card:hover .card-image-box img { transform: scale(1.1); opacity: 1; filter: grayscale(0%); }
+    .card-content { padding: 12px; border-top: 1px solid rgba(255,255,255,0.05); }
+
+    /* Modals */
+    #album-detail-modal { background: rgba(0,0,0,0.95); backdrop-filter: blur(20px); }
+    .album-legend-item { transition: all 0.3s ease; }
+    .album-legend-item.opacity-30 { opacity: 0.3; }
+    .album-legend-item.opacity-100 { opacity: 1; }
+
+    /* Track List */
+    .track-list { margin-top: 2rem; max-height: 250px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; }
+    .track-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.3s; cursor: default; }
+    .track-item:hover { background: rgba(0, 243, 255, 0.05); }
+    .track-index { font-family: 'Courier New', monospace; color: #666; font-size: 0.8rem; margin-right: 12px; min-width: 20px; }
+    .track-title { font-family: 'Inter', sans-serif; font-size: 0.9rem; color: #ddd; flex-grow: 1; }
+    .yt-link { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,0.05); transition: all 0.3s; color: #666; }
+    .yt-link:hover { background: #ff0000; color: white; transform: scale(1.1); }
+
+    /* Gallery 3D Carousel Styles */
+    .gallery-viewport {
+      width: 100%;
+      height: 500px;
+      overflow: hidden;
+      position: relative;
+      cursor: grab;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1000px;
+    }
+    .gallery-viewport:active { cursor: grabbing; }
+
+    .gallery-track {
+      display: flex;
+      align-items: center;
+      transform-style: preserve-3d;
+      transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .gallery-slide {
+      width: 320px;
+      height: 450px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+      opacity: 0.4;
+      transform: scale(0.85);
+      position: relative;
+      z-index: 1;
+      margin: 0 -20px;
+    }
+
+    .gallery-slide.active {
+      opacity: 1;
+      transform: scale(1.1);
+      z-index: 10;
+      margin: 0 10px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+    }
+
+    .gallery-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+      pointer-events: none;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    }
+
+    .gallery-indicator {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      background: rgba(0,0,0,0.5);
+      padding: 4px 8px;
+      border-radius: 20px;
+      pointer-events: none;
+      z-index: 20;
+    }
+  </style>
+</head>
+
+<body class="antialiased">
+
+  <nav class="fixed top-0 w-full z-50 p-6 flex justify-between items-center mix-blend-difference pointer-events-none">
+    <div class="text-2xl font-black tracking-tighter pointer-events-auto">DP<span class="text-cyan-400">.VIS</span></div>
+    <div class="space-x-8 text-sm uppercase tracking-widest font-bold hidden md:block pointer-events-auto">
+      <a href="#hero" class="hover:text-cyan-400 transition">HOME</a>
+      <a href="#timeline" class="hover:text-cyan-400 transition">Evolution</a>
+      <button id="nav-btn-data" class="hover:text-cyan-400 transition text-white">ALL DATA</button>
+    </div>
+  </nav>
+
+  <canvas id="star-canvas"></canvas>
+
+  <section id="hero" class="relative h-screen flex flex-col justify-center items-center text-center px-4">
+    <canvas id="hero-canvas"></canvas>
+    <div id="loading">LOADING MODEL...</div>
+
+    <h1 class="text-9xl md:text-[13rem] font-black tracking-tighter mb-4 gs-reveal neon-text pointer-events-none select-none leading-none">DAFT PUNK</h1>
+
+    <div class="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 instruction gs-reveal pointer-events-none">
+      <span class="tracking-[0.2em] text-[10px] text-cyan-400">MOVE MOUSE TO DISPERSE</span>
+      <svg class="w-6 h-6 animate-bounce text-cyan-400 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+      </svg>
+    </div>
+  </section>
+
+  <section id="timeline" class="relative overflow-hidden min-h-screen">
+    <div class="container mx-auto px-6 pt-24 pb-32 text-center relative z-10">
+      <h2 class="text-5xl md:text-7xl font-black text-white mb-4 tracking-tighter gs-reveal">ARCHIVE</h2>
+      <p class="text-cyan-400 tracking-[0.3em] uppercase text-sm gs-reveal">1993 - 2013</p>
+    </div>
+    <div class="container mx-auto px-4 relative timeline-container">
+      <div class="timeline-spine"></div>
+      <div class="timeline-track" id="timeline-track"></div>
+    </div>
+  </section>
+
+  <div id="album-detail-modal" class="fixed inset-0 z-[200] hidden opacity-0 transition-opacity duration-500 flex items-center justify-center">
+    <button id="close-detail" class="absolute top-8 right-8 text-white z-50 hover:text-cyan-400 transform hover:scale-110 transition">
+      <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+    </button>
+    <div class="container mx-auto px-6 relative h-full flex flex-col justify-center">
+      <div class="grid md:grid-cols-2 gap-12 items-center h-full max-h-[80vh]">
+        <div class="relative gs-detail-left opacity-0 transform -translate-x-10 flex items-center justify-center">
+          <img id="detail-img" src="" class="w-full max-w-md mx-auto shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-gray-800 rounded-lg object-contain max-h-[60vh]">
+        </div>
+        <div class="gs-detail-right opacity-0 transform translate-x-10 flex flex-col justify-center h-full overflow-hidden">
+          <div class="flex-shrink-0">
+            <h2 id="detail-year" class="text-cyan-400 font-mono text-xl tracking-widest mb-2"></h2>
+            <h1 id="detail-title" class="text-4xl md:text-6xl font-black text-white leading-none mb-4"></h1>
+            <div class="w-20 h-1 bg-cyan-400 mb-6"></div>
+            <p id="detail-desc" class="text-gray-300 text-lg leading-relaxed max-w-xl mb-4"></p>
+            <div class="grid grid-cols-2 gap-4 text-sm text-gray-500 font-mono mb-4">
+              <div><span class="block text-gray-700 uppercase text-xs">Type</span><span id="detail-type" class="text-white"></span></div>
+              <div><span class="block text-gray-700 uppercase text-xs">Meta</span><span id="detail-meta" class="text-white"></span></div>
+            </div>
+          </div>
+          <div class="flex-grow flex flex-col min-h-0">
+            <h3 class="text-xs uppercase tracking-widest text-gray-600 mb-2 mt-2">Tracklist</h3>
+            <div id="detail-tracks" class="track-list custom-scrollbar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="data-modal" class="fixed inset-0 z-[100] bg-black hidden opacity-0 transition-opacity duration-700 overflow-y-auto custom-scrollbar">
+    <div class="fixed top-0 left-0 w-full p-8 flex justify-between items-center z-[120] mix-blend-difference pointer-events-none">
+      <h3 class="text-3xl font-black text-white tracking-tighter pointer-events-auto">DATA<span class="text-cyan-400">.LOG</span></h3>
+      <button id="btn-close-modal" class="pointer-events-auto text-white hover:text-cyan-400 transition transform hover:rotate-90">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+    </div>
+
+    <div class="w-full">
+      <div class="w-full min-h-screen relative flex items-center justify-center border-b border-gray-900 py-24 px-6">
+        <div class="container mx-auto grid md:grid-cols-2 gap-12 items-center">
+
+          <div class="relative">
+            <div class="gallery-viewport" id="gallery-viewport">
+              <div class="gallery-track" id="gallery-track">
+                <div class="gallery-slide"><img src="./daftpunk/A.jpg" draggable="false"></div>
+                <div class="gallery-slide"><img src="./daftpunk/B.jpg" draggable="false"></div>
+                <div class="gallery-slide active"><img src="./daftpunk/C.jpg" draggable="false"></div>
+                <div class="gallery-slide"><img src="./daftpunk/D.jpg" draggable="false"></div>
+                <div class="gallery-slide"><img src="./daftpunk/E.jpg" draggable="false"></div>
+              </div>
+              <div class="gallery-indicator">DRAG TO EXPLORE &lt;&gt;</div>
+            </div>
+          </div>
+
+          <div class="space-y-10">
+            <div>
+              <h2 class="text-4xl font-bold mb-4">Sonic Architects</h2>
+              <p class="text-gray-400 leading-relaxed text-justify mb-4">
+                Behind the iconic helmets, Thomas Bangalter and Guy-Manuel de Homem-Christo weren't just musicians—they were the architects of a digital revolution. Emerging from the French House scene of the 90s, they redefined electronic music by blending raw, mechanical rhythms with the soulful groove of disco and rock.
+              </p>
+              <p class="text-gray-400 leading-relaxed text-justify mb-6">
+                Their visual anonymity became their greatest statement. By erasing their human faces, they reflected the listener's own humanity back at them, creating a timeless legacy that transcends genres. With over 45 major nominations and 15 worldwide wins, their influence echoes in every corner of modern pop culture.
+              </p>
+            </div>
+
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
+                  <h4 class="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4">Career Recognition</h4>
+                  <div id="chart-accolades-pie" style="width: 100%; height: 150px;"></div>
+                </div>
+                <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-800">
+                  <h4 class="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4">Wins by Org</h4>
+                  <div id="chart-org-bar" style="width: 100%; height: 150px;"></div>
+                </div>
+              </div>
+              <div class="bg-gray-900/50 p-6 rounded-lg border border-gray-800">
+                 <h3 class="text-sm font-bold text-cyan-400 uppercase tracking-widest mb-4">Grammy Awards Timeline</h3>
+                 <div id="chart-grammy-line" style="width: 100%; height: 250px;"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="w-full h-screen relative flex items-center justify-center overflow-hidden border-b border-gray-900 bg-[#050505]">
+        <div class="absolute right-8 md:right-20 top-1/4 z-20 max-w-sm text-right pointer-events-none">
+          <h4 class="text-cyan-400 text-xs font-bold tracking-[0.4em] uppercase mb-4 pr-1 border-r-2 border-cyan-400">Tour Data</h4>
+          <h2 class="text-5xl md:text-7xl font-black text-white mb-6 leading-[0.9]">ALIVE <br>2007</h2>
+        </div>
+        <div class="absolute inset-0 z-10 opacity-80">
+          <div id="chart-map-full" style="width: 100%; height: 100%;"></div>
+        </div>
+        <div class="absolute right-8 bottom-20 z-30 flex flex-col gap-2 pointer-events-auto">
+          <button onclick="window.zoomMap(1.2)" class="w-10 h-10 rounded-full bg-gray-800/80 border border-gray-600 text-white hover:bg-cyan-400/20 hover:border-cyan-400 hover:text-cyan-400 transition flex items-center justify-center text-xl font-bold">+</button>
+          <button onclick="window.zoomMap(0.8)" class="w-10 h-10 rounded-full bg-gray-800/80 border border-gray-600 text-white hover:bg-cyan-400/20 hover:border-cyan-400 hover:text-cyan-400 transition flex items-center justify-center text-xl font-bold">−</button>
+        </div>
+      </div>
+
+      <div class="w-full h-screen relative flex flex-col justify-end pb-20 overflow-hidden border-b border-gray-900 bg-black">
+        <div class="w-full h-[85vh] z-10">
+          <div id="chart-line-full" style="width: 100%; height: 100%;"></div>
+        </div>
+      </div>
+
+      <div class="w-full h-screen relative flex items-center justify-center overflow-hidden border-b border-gray-900 bg-gradient-to-b from-[#0a0a0a] to-black">
+        <h1 class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[15vw] font-black text-[#111] select-none z-0 tracking-tighter">STYLE</h1>
+        <div class="absolute left-8 md:left-20 top-1/4 z-20 max-w-md pointer-events-auto">
+          <h4 class="text-cyan-400 text-xs font-bold tracking-[0.4em] uppercase mb-4 pl-1 border-l-2 border-cyan-400">Audio Features</h4>
+          <h2 class="text-5xl md:text-7xl font-black text-white mb-6 leading-[0.9]">TRIAD <br>GENRES</h2>
+          <div class="backdrop-blur-sm bg-black/40 p-6 rounded-lg border border-white/10 space-y-3">
+            <p class="text-gray-400 text-sm mb-4">Click to filter (Click again to reset):</p>
+            <div class="album-legend-item cursor-pointer group transition-all duration-300 hover:translate-x-2 opacity-100" onclick="window.toggleRadarSeries('Discovery', this)">
+              <span class="inline-block w-3 h-3 rounded-full bg-[#00f3ff] mr-2 shadow-[0_0_10px_#00f3ff]"></span>
+              <span class="text-white font-bold text-lg group-hover:text-cyan-400 transition">Discovery</span>
+              <span class="text-gray-500 text-xs ml-2 uppercase tracking-wider">Pure Electronic</span>
+            </div>
+            <div class="album-legend-item cursor-pointer group transition-all duration-300 hover:translate-x-2 opacity-100" onclick="window.toggleRadarSeries('RAM', this)">
+              <span class="inline-block w-3 h-3 rounded-full bg-[#ffd700] mr-2 shadow-[0_0_10px_#ffd700]"></span>
+              <span class="text-white font-bold text-lg group-hover:text-yellow-400 transition">RAM</span>
+              <span class="text-gray-500 text-xs ml-2 uppercase tracking-wider">Organic Funk</span>
+            </div>
+            <div class="album-legend-item cursor-pointer group transition-all duration-300 hover:translate-x-2 opacity-100" onclick="window.toggleRadarSeries('Homework', this)">
+              <span class="inline-block w-3 h-3 rounded-full bg-[#ff0055] mr-2 shadow-[0_0_10px_#ff0055]"></span>
+              <span class="text-white font-bold text-lg group-hover:text-pink-500 transition">Homework</span>
+              <span class="text-gray-500 text-xs ml-2 uppercase tracking-wider">Raw House</span>
+            </div>
+            <div class="album-legend-item cursor-pointer group transition-all duration-300 hover:translate-x-2 opacity-100" onclick="window.toggleRadarSeries('Human After All', this)">
+              <span class="inline-block w-3 h-3 rounded-full bg-[#cccccc] mr-2 shadow-[0_0_10px_#cccccc]"></span>
+              <span class="text-white font-bold text-lg group-hover:text-gray-300 transition">Human After All</span>
+              <span class="text-gray-500 text-xs ml-2 uppercase tracking-wider">Mechanical</span>
+            </div>
+          </div>
+        </div>
+        <div class="w-full h-full md:w-[70%] md:h-[90%] z-10 md:ml-auto">
+          <div id="chart-radar-full" style="width: 100%; height: 100%;"></div>
+        </div>
+      </div>
+
+      <div class="w-full h-screen relative flex items-center justify-center overflow-hidden bg-black border-b border-gray-900">
+        <div class="w-full h-full z-10">
+          <div id="chart-graph-full" style="width: 100%; height: 100%;"></div>
+        </div>
+      </div>
+
+      <div class="w-full min-h-[80vh] relative flex flex-col items-center justify-center bg-[#0a0a0a] py-20 overflow-hidden">
+        <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIj48ZmlsdGVyIGlkPSJnoiI+PHZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuNjUiIG51bU9jdGF2ZXM9IjMiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjZykiIG9wYWNpdHk9IjAuMDUiLz48L3N2Zy4+')] opacity-20 pointer-events-none"></div>
+        <h3 class="text-xs text-gray-500 tracking-[0.5em] uppercase mb-12 relative z-10">Lyrical Frequency</h3>
+        <div id="word-cloud-container" class="w-full max-w-7xl mx-auto flex flex-wrap content-center justify-center items-center relative z-10 px-4"></div>
+        <footer class="mt-20 text-center text-gray-600 text-sm relative z-10 h-10"></footer>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
+
+    let chartRadarFull, chartMapFull, chartLineFull, chartGraphFull;
+    let chartAccoladesPie, chartOrgBar, chartGrammyLine;
+
+    // Timeline Data
+    const mainAlbumData = {
+      'ram': { title: 'RAM', year: '2013', img: 'images/ram.jpg', desc: 'Random Access Memories. The grand finale. A lush, live-recorded ode to disco.', meta: '13 Tracks / 74:24', tracks: [{ title: "Give Life Back to Music", url: "https://www.youtube.com/watch?v=IluRBiiDppA" }, { title: "The Game of Love", url: "https://www.youtube.com/watch?v=ajGKWk0auRw" }, { title: "Giorgio by Moroder", url: "https://www.youtube.com/watch?v=zhl-Cs1-SG4" }, { title: "Within", url: "https://www.youtube.com/watch?v=Of0iK5na6aA" }, { title: "Instant Crush", url: "https://www.youtube.com/watch?v=a5uQMwRMHcs" }, { title: "Lose Yourself to Dance", url: "https://www.youtube.com/watch?v=NF-kLy44Hls" }, { title: "Touch", url: "https://www.youtube.com/watch?v=XfH3erWIsH0" }, { title: "Get Lucky", url: "https://www.youtube.com/watch?v=5NV6Rdv1a3I" }, { title: "Beyond", url: "https://www.youtube.com/watch?v=F0Vkwy9nLpw" }, { title: "Motherboard", url: "https://www.youtube.com/watch?v=kYtGl1dX5qI" }, { title: "Fragments of Time", url: "https://www.youtube.com/watch?v=84_315-99dc" }, { title: "Doin' It Right", url: "https://www.youtube.com/watch?v=LL-gyhVF7DQ" }, { title: "Contact", url: "https://www.youtube.com/watch?v=HcuKxAvpMnE" }] },
+      'tron': { title: 'TRON: Legacy', year: '2010', img: 'images/tron.jpg', desc: 'A cinematic blend of orchestral grandeur and digital precision.', meta: '22 Tracks / 58:44', tracks: [{ title: "Overture", url: "https://www.youtube.com/watch?v=8g7jV6QJ59s" }, { title: "The Grid", url: "https://www.youtube.com/watch?v=tFMPZq77J3g" }, { title: "The Son of Flynn", url: "https://www.youtube.com/watch?v=17X2gYVjdHw" }, { title: "Derezzed", url: "https://www.youtube.com/watch?v=m4cgLL8JaVI" }, { title: "End of Line", url: "https://www.youtube.com/watch?v=3n3n3n3n3n3" }] },
+      'alive07': { title: 'ALIVE 2007', year: '2007', img: 'images/alive07.jpg', desc: 'The legendary pyramid tour that redefined live electronic music.', meta: '12 Tracks / 84:20', tracks: [{ title: "Robot Rock / Oh Yeah", url: "https://www.youtube.com/watch?v=sCNlt5nvSI8" }, { title: "Touch It / Technologic", url: "https://www.youtube.com/watch?v=1j_kP5j5j5j" }, { title: "Around the World / Harder Better Faster Stronger", url: "https://www.youtube.com/watch?v=4o_pS8m8m8m" }, { title: "One More Time / Aerodynamic", url: "https://www.youtube.com/watch?v=7t_vV1p1p1p" }] },
+      'haa': { title: 'HUMAN AFTER ALL', year: '2005', img: 'images/haa.jpg', desc: 'Raw, mechanical, and repetitive. Created in just 6 weeks.', meta: '10 Tracks / 45:38', tracks: [{ title: "Human After All", url: "https://www.youtube.com/watch?v=hrsvo4ybd-8" }, { title: "Robot Rock", url: "https://www.youtube.com/watch?v=H2viBPq_k-s" }, { title: "Technologic", url: "https://www.youtube.com/watch?v=D8K90hX4PrE" }] },
+      'discovery': { title: 'DISCOVERY', year: '2001', img: 'images/discovery.jpg', desc: 'A futuristic pop masterpiece full of samples and anime aesthetics.', meta: '14 Tracks / 60:50', tracks: [{ title: "One More Time", url: "https://www.youtube.com/watch?v=FGBhQbmPwH8" }, { title: "Aerodynamic", url: "https://www.youtube.com/watch?v=L93-7vRfxNs" }, { title: "Digital Love", url: "https://www.youtube.com/watch?v=FxzBvqY5PP0" }, { title: "Harder, Better, Faster, Stronger", url: "https://www.youtube.com/watch?v=gAjR4_CbPpQ" }] },
+      'homework': { title: 'HOMEWORK', year: '1997', img: 'images/homework.jpg', desc: 'The raw, rebellious house beats that started the revolution.', meta: '16 Tracks / 73:53', tracks: [{ title: "Da Funk", url: "https://www.youtube.com/watch?v=mmi60Bd4jSs" }, { title: "Around the World", url: "https://www.youtube.com/watch?v=K0kfBaO5FCQ" }, { title: "Revolution 909", url: "https://www.youtube.com/watch?v=uURB-vo9rZ4" }] }
+    };
+
+    const timelineEvents = [
+      { key: 'newwave', year: '1994', title: 'THE NEW WAVE', type: 'Single', img: 'images/newwave.jpg', desc: 'The very first single.', tracks: [] },
+      { key: 'dafunk', year: '1995', title: 'DA FUNK', type: 'Hit Single', img: 'images/dafunk.jpg', desc: 'Signature sound introduced.', tracks: [] },
+      { key: 'homework', year: '1997', title: 'HOMEWORK', type: 'Studio Album', img: 'images/homework.jpg', desc: 'The Beginning.' },
+      { key: 'around', year: '1997', title: 'AROUND THE WORLD', type: 'Visual', img: 'images/around.jpg', desc: 'Michel Gondry masterpiece.', tracks: [] },
+      { key: 'rev909', year: '1998', title: 'REVOLUTION 909', type: 'Single', img: 'images/rev909.jpg', desc: 'Ode to the rave scene.', tracks: [] },
+      { key: 'onemore', year: '2000', title: 'ONE MORE TIME', type: 'Mega Hit', img: 'images/onemore.jpg', desc: 'Anthem of the generation.', tracks: [] },
+      { key: 'discovery', year: '2001', title: 'DISCOVERY', type: 'Studio Album', img: 'images/discovery.jpg', desc: 'Interstella 5555.' },
+      { key: 'alive97', year: '2001', title: 'ALIVE 1997', type: 'Live', img: 'images/alive97.jpg', desc: 'Live in Birmingham.', tracks: [] },
+      { key: 'interstella', year: '2003', title: 'INTERSTELLA 5555', type: 'Movie', img: 'images/interstella.jpg', desc: 'Anime musical.', tracks: [] },
+      { key: 'haa', year: '2005', title: 'HUMAN AFTER ALL', type: 'Studio Album', img: 'images/haa.jpg', desc: 'Mechanical rock.' },
+      { key: 'electroma', year: '2006', title: 'ELECTROMA', type: 'Film', img: 'images/electroma.jpg', desc: 'Robots seeking humanity.', tracks: [] },
+      { key: 'alive07', year: '2007', title: 'ALIVE 2007', type: 'Live Album', img: 'images/alive07.jpg', desc: 'The Pyramid.' },
+      { key: 'tron', year: '2010', title: 'TRON: LEGACY', type: 'Soundtrack', img: 'images/tron.jpg', desc: 'Digital Orchestra.' },
+      { key: 'lucky', year: '2013', title: 'GET LUCKY', type: 'Global Hit', img: 'images/lucky.jpg', desc: 'Song of the summer.', tracks: [] },
+      { key: 'ram', year: '2013', title: 'RAM', type: 'Studio Album', img: 'images/ram.jpg', desc: 'Random Access Memories.' }
+    ];
+
+    const getDetailData = (key) => {
+      if (mainAlbumData[key]) return { ...mainAlbumData[key], type: 'Studio Album' };
+      const fallback = timelineEvents.find(t => t.key === key);
+      return {
+        title: fallback?.title || 'UNKNOWN',
+        year: fallback?.year || '--',
+        img: fallback?.img || '',
+        desc: fallback?.desc || '',
+        type: fallback?.type || 'Event',
+        meta: fallback?.tracks ? `${fallback.tracks.length} Track(s)` : 'Single / Visual',
+        tracks: fallback?.tracks || []
+      };
+    };
+
+    const renderTimeline = () => {
+      const track = document.getElementById('timeline-track');
+      const fallbackImg = 'https://upload.wikimedia.org/wikipedia/commons/a/a7/Blank_image.jpg';
+      track.innerHTML = timelineEvents.map((item, index) => {
+        const clickAttr = `onclick="window.openAlbumDetail('${item.key}')"`;
+        return `
+          <div class="timeline-node-group">
+            <div class="year-marker">${item.year}</div>
+            <div class="connector-line"></div>
+            <div class="card-wrapper" ${clickAttr}>
+              <div class="visual-card group h-full flex flex-col">
+                <div class="card-image-box"><img src="${item.img}" alt="${item.title}" onerror="this.src='${fallbackImg}'"></div>
+                <div class="card-content">
+                  <h3 class="text-base font-black text-white mb-1 group-hover:text-cyan-400 transition leading-none tracking-tight">${item.title}</h3>
+                  <div class="text-[9px] text-gray-500 font-bold tracking-widest uppercase mb-1">${item.type}</div>
+                  <p class="text-gray-600 text-[9px] line-clamp-1 transition leading-tight">${item.desc}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    const initStarfield = () => {
+      const canvas = document.getElementById('star-canvas');
+      const ctx = canvas.getContext('2d');
+      let width, height;
+      const stars = [];
+      const numStars = 800;
+      function resize() { width = window.innerWidth; height = window.innerHeight; canvas.width = width; canvas.height = height; }
+      window.addEventListener('resize', resize);
+      resize();
+      for (let i = 0; i < numStars; i++) stars.push({ x: (Math.random() - 0.5) * width * 3, y: (Math.random() - 0.5) * height * 3, z: Math.random() * 2000, pz: 0 });
+      function animateStars() {
+        ctx.fillStyle = "#020204"; ctx.fillRect(0, 0, width, height); ctx.lineWidth = 1;
+        stars.forEach(star => {
+          star.pz = star.z; star.z -= 1.4;
+          if (star.z <= 0) { star.z = 2000; star.x = (Math.random() - 0.5) * width * 3; star.y = (Math.random() - 0.5) * height * 3; star.pz = 2000; }
+          const k = 128.0 / star.z; const px = star.x * k + width / 2; const py = star.y * k + height / 2;
+          const pk = 128.0 / star.pz; const ppx = star.x * pk + width / 2; const ppy = star.y * pk + height / 2;
+          if (px >= 0 && px <= width && py >= 0 && py <= height) {
+            const alpha = (1 - star.z / 2000); ctx.strokeStyle = `rgba(180, 220, 255, ${alpha * 0.5})`;
+            ctx.beginPath(); ctx.moveTo(ppx, ppy); ctx.lineTo(px, py); ctx.stroke();
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`; ctx.beginPath(); ctx.arc(px, py, (1 - star.z / 2000) * 2 * 0.8, 0, Math.PI * 2); ctx.fill();
+          }
+        });
+        requestAnimationFrame(animateStars);
+      }
+      animateStars();
+    };
+
+    // ✅ UPDATED: hero helmet supports mouse drag 360° center rotation (keeps disperse interaction)
+    const initThreeJS = () => {
+      const canvas = document.getElementById('hero-canvas');
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+      camera.position.z = 25;
+
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const params = {
+        color: '#00f3ff',
+        size: 0.06,
+        count: 40000,
+        scale: 25.0,
+        repelRange: 5.0,
+        repelStrength: 8.0,
+        returnStrength: 0.08
+      };
+
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2(9999, 9999);
+
+      // Disperse tracking (kept)
+      window.addEventListener('mousemove', e => {
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      });
+
+      const loader = new OBJLoader();
+      let particles = null;
+      const clock = new THREE.Clock();
+
+      // Wrap particles in a group so we can rotate the whole helmet
+      const helmetGroup = new THREE.Group();
+      scene.add(helmetGroup);
+
+      // --- Drag rotation state (NEW) ---
+      let isDragging = false;
+      let lastX = 0;
+      let lastT = 0;
+
+      // yaw rotation (around Y) accumulated
+      let yaw = 0;
+
+      // inertia
+      let yawVel = 0;
+
+      // tuning
+      const dragSpeed = 0.006;   // radians per pixel
+      const inertiaDamp = 0.92;  // 0..1 (lower = more friction)
+      const autoSpin = 0.0012;   // base auto rotation when not dragging
+
+      // Use pointer events (mouse + touch) without affecting other UI
+      const onPointerDown = (e) => {
+        // only left click / primary pointer
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        isDragging = true;
+        canvas.setPointerCapture?.(e.pointerId);
+        lastX = e.clientX;
+        lastT = performance.now();
+        yawVel = 0; // reset inertia so it feels direct
+      };
+
+      const onPointerMove = (e) => {
+        if (!isDragging) return;
+
+        // prevent selecting text / dragging page
+        e.preventDefault();
+
+        const now = performance.now();
+        const dx = e.clientX - lastX;
+        const dt = Math.max(1, now - lastT);
+
+        const dyaw = dx * dragSpeed;
+        yaw += dyaw;
+
+        // velocity for inertia (radians per frame-ish)
+        yawVel = (dyaw / dt) * 16.666; // normalize to ~60fps step
+
+        lastX = e.clientX;
+        lastT = now;
+      };
+
+      const endDrag = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        canvas.releasePointerCapture?.(e.pointerId);
+      };
+
+      canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+      canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+      canvas.addEventListener('pointerup', endDrag);
+      canvas.addEventListener('pointercancel', endDrag);
+      canvas.addEventListener('pointerleave', endDrag);
+
+      loader.load('./helmet.obj', (object) => {
+        document.getElementById('loading').style.opacity = 0;
+
+        let mesh = null;
+        object.traverse(child => { if (child.isMesh) mesh = child; });
+
+        if (!mesh) { createFallbackSphere(); return; }
+
+        const sampler = new MeshSurfaceSampler(mesh).build();
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(params.count * 3);
+        const originalPositions = new Float32Array(params.count * 3);
+        const temp = new THREE.Vector3();
+
+        for (let i = 0; i < params.count; i++) {
+          sampler.sample(temp);
+          temp.multiplyScalar(params.scale);
+
+          positions[i * 3] = temp.x;
+          positions[i * 3 + 1] = temp.y;
+          positions[i * 3 + 2] = temp.z;
+
+          originalPositions[i * 3] = temp.x;
+          originalPositions[i * 3 + 1] = temp.y;
+          originalPositions[i * 3 + 2] = temp.z;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.PointsMaterial({
+          color: new THREE.Color(params.color),
+          size: params.size,
+          transparent: true,
+          opacity: 0.8,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+
+        particles = new THREE.Points(geometry, material);
+        particles.userData = { originalPositions };
+
+        helmetGroup.add(particles);
+      }, undefined, () => createFallbackSphere());
+
+      function createFallbackSphere() {
+        document.getElementById('loading').style.opacity = 0;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(params.count * 3);
+        const originalPositions = new Float32Array(params.count * 3);
+
+        for (let i = 0; i < params.count; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const r = 10 + Math.random() * 0.5;
+
+          const x = r * Math.sin(phi) * Math.cos(theta);
+          const y = r * Math.sin(phi) * Math.sin(theta);
+          const z = r * Math.cos(phi);
+
+          positions[i * 3] = x;
+          positions[i * 3 + 1] = y;
+          positions[i * 3 + 2] = z;
+
+          originalPositions[i * 3] = x;
+          originalPositions[i * 3 + 1] = y;
+          originalPositions[i * 3 + 2] = z;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.PointsMaterial({
+          color: new THREE.Color(params.color),
+          size: params.size,
+          transparent: true,
+          opacity: 0.8,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+
+        particles = new THREE.Points(geometry, material);
+        particles.userData = { originalPositions };
+        helmetGroup.add(particles);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const time = clock.getElapsedTime();
+
+        // --- Apply rotation (NEW) ---
+        // base auto spin + drag inertia
+        if (!isDragging) {
+          yawVel *= inertiaDamp;
+          yaw += yawVel;
+          yaw += autoSpin;
+        }
+
+        helmetGroup.rotation.y = yaw;
+
+        if (particles) {
+          // --- Disperse effect (kept) ---
+          raycaster.setFromCamera(mouse, camera);
+
+          const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5).unproject(camera);
+          const dir = vector.sub(camera.position).normalize();
+          const distance = -camera.position.z / dir.z;
+          const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+
+          // IMPORTANT: mouse in particle local space (account for group rotation)
+          const inv = new THREE.Matrix4().copy(particles.matrixWorld).invert();
+          const localMouse = pos.applyMatrix4(inv);
+
+          const posArr = particles.geometry.attributes.position.array;
+          const origArr = particles.userData.originalPositions;
+
+          for (let i = 0; i < params.count; i++) {
+            const idx = i * 3;
+            const px = posArr[idx], py = posArr[idx + 1], pz = posArr[idx + 2];
+            const ox = origArr[idx], oy = origArr[idx + 1], oz = origArr[idx + 2];
+
+            const dx = px - localMouse.x;
+            const dy = py - localMouse.y;
+            const dz = pz - localMouse.z;
+
+            const dSq = dx * dx + dy * dy + dz * dz;
+
+            if (dSq < params.repelRange * params.repelRange) {
+              const d = Math.sqrt(Math.max(dSq, 1e-6));
+              const force = (params.repelRange - d) / params.repelRange;
+              const factor = params.repelStrength * force + Math.sin(time * 10 + i) * 0.1;
+
+              posArr[idx]     += (dx / d) * factor * 0.1;
+              posArr[idx + 1] += (dy / d) * factor * 0.1;
+              posArr[idx + 2] += (dz / d) * factor * 0.1;
+            } else {
+              posArr[idx]     += (ox - px) * params.returnStrength;
+              posArr[idx + 1] += (oy - py) * params.returnStrength;
+              posArr[idx + 2] += (oz - pz) * params.returnStrength;
+            }
+          }
+
+          particles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    };
+
+    async function fetchMapData() {
+      try { const r = await fetch('https://raw.githubusercontent.com/apache/echarts/master/test/data/map/json/world.json'); return await r.json(); }
+      catch (e) { return null; }
+    }
+
+    const getTourData = () => {
+      const p = 'tour/';
+      const rawData = [
+        { name: 'Inverness', date: '10 Jun 2007', venue: 'RockNess Festival', coord: [-4.2264, 57.4778], img: p + 'Inverness.jpg' },
+        { name: 'Paris', date: '14 Jun 2007', venue: 'Palais Omnisports Bercy', coord: [2.3522, 48.8566], img: p + 'Paris.jpg' },
+        { name: 'London', date: '16 Jun 2007', venue: 'O2 Wireless Festival', coord: [-0.1278, 51.5074], img: p + 'London.jpg' },
+        { name: 'Leeds', date: '17 Jun 2007', venue: 'O2 Wireless Festival', coord: [-1.5491, 53.8008], img: p + 'Leeds.jpg' },
+        { name: 'Istanbul', date: '23 Jun 2007', venue: 'Turkcell Kuruçeşme Arena', coord: [28.9784, 41.0082], img: p + 'Istanbul.jpg' },
+        { name: 'Nîmes', date: '26 Jun 2007', venue: 'Arènes de Nîmes', coord: [4.3601, 43.8367], img: p + 'Nîmes.jpg' },
+        { name: 'Düsseldorf', date: '29 Jun 2007', venue: 'Philipshalle', coord: [6.7735, 51.2217], img: p + 'Düsseldorf.jpg' },
+        { name: 'Berlin', date: '30 Jun 2007', venue: 'Velodrom', coord: [13.4050, 52.5200], img: p + 'Berlin.jpg' },
+        { name: 'Amsterdam', date: '4 Jul 2007', venue: 'Heineken Music Hall', coord: [4.9041, 52.3676], img: p + 'Amsterdam.jpg' },
+        { name: 'Esch-sur-Alzette', date: '6 Jul 2007', venue: 'Rockhal', coord: [5.9806, 49.4958], img: p + 'Esch-sur-Alzette.jpg' },
+        { name: 'Naas', date: '8 Jul 2007', venue: 'Oxegen Festival', coord: [-6.6669, 53.2175], img: p + 'Naas.jpg' },
+        { name: 'Turin', date: '12 Jul 2007', venue: 'Traffic Free Festival', coord: [7.6869, 45.0703], img: p + 'Turin.jpg' },
+        { name: 'Los Angeles', date: '21 Jul 2007', venue: 'Memorial Sports Arena', coord: [-118.2437, 34.0522], img: p + 'Los Angeles.jpg' },
+        { name: 'Berkeley', date: '27 Jul 2007', venue: 'Greek Theatre', coord: [-122.2730, 37.8715], img: p + 'Berkeley.jpg' },
+        { name: 'Seattle', date: '29 Jul 2007', venue: 'WaMu Theater', coord: [-122.3321, 47.6062], img: p + 'Seattle.jpg' },
+        { name: 'Morrison', date: '31 Jul 2007', venue: 'Red Rocks', coord: [-105.1911, 39.6533], img: p + 'Morrison.jpg' },
+        { name: 'Chicago', date: '3 Aug 2007', venue: 'Lollapalooza', coord: [-87.6298, 41.8781], img: p + 'Chicago.jpg' },
+        { name: 'Mississauga', date: '5 Aug 2007', venue: 'Arrow Hall', coord: [-79.6441, 43.5890], img: p + 'Mississauga.jpg' },
+        { name: 'Montreal', date: '7 Aug 2007', venue: 'Centre Bell', coord: [-73.5673, 45.5017], img: p + 'Montreal.jpg' },
+        { name: 'Brooklyn', date: '9 Aug 2007', venue: 'KeySpan Park', coord: [-73.9442, 40.6782], img: p + 'Brooklyn.jpg' },
+        { name: 'Las Vegas', date: '27 Oct 2007', venue: 'Vegoose Festival', coord: [-115.1398, 36.1699], img: p + 'Las Vegas.jpg' },
+        { name: 'Mexico City', date: '31 Oct 2007', venue: 'Palacio de los Deportes', coord: [-99.1332, 19.4326], img: p + 'Mexico City.jpg' },
+        { name: 'Monterrey', date: '2 Nov 2007', venue: 'Arena Monterrey', coord: [-100.3161, 25.6866], img: p + 'Monterrey.jpg' },
+        { name: 'Guadalajara', date: '4 Nov 2007', venue: 'Auditorio Telmex', coord: [-103.3496, 20.6597], img: p + 'Guadalajara.jpg' },
+        { name: 'Kobe', date: '6 Dec 2007', venue: 'World Memorial Hall', coord: [135.1955, 34.6901], img: p + 'Kobe.jpg' },
+        { name: 'Chiba City', date: '8-9 Dec 2007', venue: 'Makuhari Messe', coord: [140.12, 35.60], img: p + 'Chiba City.jpg' },
+        { name: 'Melbourne', date: '13-14 Dec 2007', venue: 'Sidney Myer Music Bowl', coord: [144.9631, -37.8136], img: p + 'Melbourne.jpg' },
+        { name: 'Perth', date: '16 Dec 2007', venue: 'The Esplanade', coord: [115.8605, -31.9505], img: p + 'Perth.jpg' },
+        { name: 'Brisbane', date: '20 Dec 2007', venue: 'River Stage', coord: [153.0251, -27.4698], img: p + 'Brisbane.jpg' },
+        { name: 'Sydney', date: '22 Dec 2007', venue: 'Showground Main Arena', coord: [151.2093, -33.8688], img: p + 'Sydney.jpg' }
+      ];
+      const scatterData = rawData.map(item => ({ name: item.name, value: [...item.coord, 10], date: item.date, venue: item.venue, img: item.img }));
+      const linesData = [];
+      for (let i = 0; i < rawData.length - 1; i++) linesData.push({ coords: [rawData[i].coord, rawData[i + 1].coord] });
+      return { scatterData, linesData };
+    };
+
+    const initCharts = async () => {
+      chartAccoladesPie = echarts.init(document.getElementById('chart-accolades-pie'));
+      chartAccoladesPie.setOption({
+        backgroundColor: 'transparent', tooltip: { trigger: 'item' }, legend: { show: false },
+        series: [{
+          name: 'Career Recognition', type: 'pie', radius: ['40%', '70%'], center: ['50%', '50%'],
+          itemStyle: { borderRadius: 5, borderColor: '#000', borderWidth: 2 },
+          label: { show: true, formatter: '{b}\n{c}', color: '#fff' },
+          data: [{ value: 15, name: 'WINS', itemStyle: { color: '#00f3ff' } }, { value: 45, name: 'NOMS', itemStyle: { color: '#333' } }]
+        }]
+      });
+
+      chartOrgBar = echarts.init(document.getElementById('chart-org-bar'));
+      chartOrgBar.setOption({
+        backgroundColor: 'transparent',
+        grid: { top: 30, bottom: 20, left: 30, right: 10 },
+        xAxis: { type: 'category', data: ['Grammy', 'IDMA', 'Billbd', 'Brit', 'MTV'], axisLabel: { color: '#888', fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false } },
+        yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
+        series: [{ data: [7, 6, 2, 1, 1], type: 'bar', barWidth: '60%', itemStyle: { color: '#C0C0C0', borderRadius: [2, 2, 0, 0] }, label: { show: true, position: 'top', color: '#fff', fontSize: 10 } }]
+      });
+
+      chartGrammyLine = echarts.init(document.getElementById('chart-grammy-line'));
+      chartGrammyLine.setOption({
+        backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { top: 0, textStyle: { color: '#aaa' } },
+        grid: { top: 30, bottom: 20, left: 30, right: 20, containLabel: true },
+        xAxis: { type: 'category', data: ['1998', '2002', '2006', '2009', '2012', '2014', '2017'], axisLabel: { color: '#666' }, axisLine: { lineStyle: { color: '#333' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#222' } } },
+        series: [
+          { name: 'Nominations', type: 'line', smooth: true, data: [1, 2, 2, 2, 1, 5, 2], itemStyle: { color: '#00f3ff' }, lineStyle: { width: 2 } },
+          { name: 'Wins', type: 'bar', barWidth: '30%', data: [0, 0, 0, 2, 0, 5, 1], itemStyle: { color: '#C0C0C0' } }
+        ]
+      });
+
+      chartRadarFull = echarts.init(document.getElementById('chart-radar-full'));
+      chartRadarFull.setOption({
+        backgroundColor: 'transparent', polar: { radius: '65%' }, legend: { show: false, data: ['Discovery', 'RAM', 'Homework', 'Human After All'] },
+        angleAxis: { type: 'value', min: 0, max: 360, interval: 60, startAngle: 90, splitLine: { show: true, lineStyle: { color: 'rgba(255, 255, 255, 0.4)', type: 'dashed' } }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { formatter: val => ({ 0: 'Energy', 360: 'Energy', 60: 'Dance', 120: 'Vocal', 180: 'Acoustic', 240: 'Electro', 300: 'Tempo' }[val] || ''), color: '#ffffff', fontWeight: '900', fontSize: 15, fontFamily: 'Inter', margin: 15 } },
+        radiusAxis: { type: 'value', min: 0, max: 100, axisLine: { show: false }, axisLabel: { show: false }, splitLine: { show: true, lineStyle: { color: 'rgba(255, 255, 255, 0.3)' } } },
+        series: [
+          { name: 'Discovery', type: 'line', coordinateSystem: 'polar', smooth: false, symbol: 'circle', symbolSize: 6, data: [[95,0],[90,60],[85,120],[50,180],[80,240],[80,300],[95,360]], itemStyle: { color: '#00f3ff', opacity: 0.8 }, lineStyle: { width: 2, color: '#00f3ff', opacity: 0.8 }, areaStyle: { opacity: 0.2, color: '#00f3ff' }, emphasis: { focus: 'series', lineStyle: { width: 5, shadowBlur: 15, shadowColor: '#00f3ff', opacity: 1 }, areaStyle: { opacity: 0.6 }, itemStyle: { borderWidth: 2, borderColor: '#fff' } } },
+          { name: 'RAM', type: 'line', coordinateSystem: 'polar', smooth: false, symbol: 'circle', symbolSize: 6, data: [[60,0],[80,60],[70,120],[95,180],[20,240],[55,300],[60,360]], itemStyle: { color: '#ffd700', opacity: 0.8 }, lineStyle: { width: 2, color: '#ffd700', opacity: 0.8 }, areaStyle: { opacity: 0.2, color: '#ffd700' }, emphasis: { focus: 'series', lineStyle: { width: 5, shadowBlur: 15, shadowColor: '#ffd700', opacity: 1 }, areaStyle: { opacity: 0.6 }, itemStyle: { borderWidth: 2, borderColor: '#fff' } } },
+          { name: 'Homework', type: 'line', coordinateSystem: 'polar', smooth: false, symbol: 'circle', symbolSize: 6, data: [[90,0],[85,60],[15,120],[20,180],[95,240],[95,300],[90,360]], itemStyle: { color: '#ff0055', opacity: 0.8 }, lineStyle: { width: 2, color: '#ff0055', opacity: 0.8 }, areaStyle: { opacity: 0.2, color: '#ff0055' }, emphasis: { focus: 'series', lineStyle: { width: 5, shadowBlur: 15, shadowColor: '#ff0055', opacity: 1 }, areaStyle: { opacity: 0.6 }, itemStyle: { borderWidth: 2, borderColor: '#fff' } } },
+          { name: 'Human After All', type: 'line', coordinateSystem: 'polar', smooth: false, symbol: 'circle', symbolSize: 6, data: [[80,0],[65,60],[40,120],[0,180],[70,240],[70,300],[80,360]], itemStyle: { color: '#cccccc', opacity: 0.8 }, lineStyle: { width: 2, color: '#fff', opacity: 0.8 }, areaStyle: { opacity: 0.15, color: '#ffffff' }, emphasis: { focus: 'series', lineStyle: { width: 5, shadowBlur: 15, shadowColor: '#ffffff', opacity: 1 }, areaStyle: { opacity: 0.6 }, itemStyle: { borderWidth: 2, borderColor: '#000' } } }
+        ]
+      });
+
+      const worldJson = await fetchMapData();
+      chartMapFull = echarts.init(document.getElementById('chart-map-full'));
+      const { scatterData, linesData } = getTourData();
+      if (worldJson) {
+        echarts.registerMap('world', worldJson);
+        chartMapFull.setOption({
+          backgroundColor: 'transparent', tooltip: { trigger: 'item', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: '#00f3ff', textStyle: { color: '#fff' }, padding: 0, formatter: (params) => { if (params.seriesType !== 'effectScatter') return null; const d = params.data; return `<div class="bg-black/90 border border-cyan-400 rounded-lg overflow-hidden shadow-[0_0_20px_rgba(0,243,255,0.3)] font-sans" style="width: 220px;"><div class="relative h-32 w-full"><img src="${d.img}" class="w-full h-full object-cover" /><div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div><div class="absolute bottom-2 left-3 text-white font-black text-lg tracking-tighter" style="text-shadow: 0 2px 4px black;">${String(d.name).toUpperCase()}</div></div><div class="p-3 border-t border-gray-800"><div class="flex items-center gap-2 mb-1"><span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span><span class="text-cyan-400 text-xs font-bold tracking-widest uppercase">Alive 2007</span></div><div class="text-gray-300 text-xs mb-1">📅 ${d.date}</div><div class="text-gray-400 text-xs leading-tight">📍 ${d.venue}</div></div></div>`; } },
+          geo: { map: 'world', roam: 'move', zoom: 1.2, label: { show: false }, itemStyle: { areaColor: '#1f2937', borderColor: '#374151', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#374151' } } },
+          series: [{ type: 'lines', coordinateSystem: 'geo', data: linesData, zlevel: 1, effect: { show: true, period: 4, trailLength: 0.5, color: '#00f3ff', symbolSize: 4 }, lineStyle: { color: 'rgba(0, 243, 255, 0.1)', width: 1, opacity: 0.4, curveness: 0.2 } }, { type: 'effectScatter', coordinateSystem: 'geo', data: scatterData, symbolSize: 10, itemStyle: { color: '#00f3ff', shadowBlur: 10, shadowColor: '#00f3ff' }, rippleEffect: { brushType: 'stroke', scale: 4 }, label: { show: false }, zlevel: 2 }]
+        });
+      // ✅ FIX: expose zoom controls for the map
+window.zoomMap = (factor) => {
+  if (!chartMapFull) return;
+
+  const opt = chartMapFull.getOption();
+  const geo = opt.geo && opt.geo[0] ? opt.geo[0] : {};
+  const currentZoom = typeof geo.zoom === 'number' ? geo.zoom : 1.2;
+
+  // next zoom
+  let nextZoom = currentZoom * factor;
+
+  // clamp to prevent disappearing / too huge
+  nextZoom = Math.max(0.6, Math.min(6, nextZoom));
+
+  // preserve current center if available
+  const nextCenter = geo.center ? geo.center : undefined;
+
+  chartMapFull.setOption(
+    {
+      geo: {
+        zoom: nextZoom,
+        ...(nextCenter ? { center: nextCenter } : {})
+      }
+    },
+    false
+  );
+};
+}
+
+      chartLineFull = echarts.init(document.getElementById('chart-line-full'));
+      const xDataLine = ['2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'];
+      const yDataLine = [30, 38, 45, 52, 60, 85, 110, 145, 180, 200, 220, 265, 310, 345, 380, 400, 420];
+      const yDataGrowth = [15, 12, 15, 30, 50, 60, 70, 55, 40, 65, 90, 80, 70, 55, 40, 35, 30];
+      chartLineFull.setOption({
+        backgroundColor: 'transparent', title: { text: 'THE ETERNAL WAVE', subtext: 'An enduring presence beyond active creation\nYouTube Views · Cumulative (×10⁶) & Growth Rate', left: 'center', top: '8%', textStyle: { color: '#fff', fontSize: 48, fontFamily: 'Inter', fontWeight: '400', letterSpacing: 1 }, subtextStyle: { color: '#aaa', fontSize: 12, fontFamily: 'Inter', fontWeight: '300', lineHeight: 24, marginTop: 10 } },
+        grid: { left: '10%', right: '10%', bottom: '10%', top: '25%', containLabel: false, show: false }, tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: '#00f3ff', textStyle: { color: '#fff' }, formatter: function(params) { let res = `<div><span style="color:#8ecae6; font-weight:bold">${params[0].name}</span></div>`; params.forEach(item => { const val = item.seriesName === 'Growth Rate' ? `${item.value}%` : `${item.value}M`; res += `<div>${item.marker} ${item.seriesName}: <span style="float:right; margin-left:20px; color:#fff">${val}</span></div>`; }); return res; } },
+        xAxis: { type: 'category', boundaryGap: false, data: xDataLine, axisLabel: { color: '#ccc', fontSize: 14, margin: 25, fontFamily: 'Inter', interval: 1 }, axisLine: { show: false }, axisTick: { show: false }, axisPointer: { show: true, lineStyle: { color: '#00f3ff', width: 1, type: 'dashed' } } },
+        yAxis: [{ type: 'value', show: false, min: 0, max: 600 }, { type: 'value', show: false, min: -100, max: 200 }],
+        series: [{ name: 'Cumulative Views', type: 'line', yAxisIndex: 0, smooth: 0.4, symbol: 'circle', symbolSize: 6, itemStyle: { color: '#fff', borderColor: '#00f3ff', borderWidth: 2 }, showSymbol: true, data: yDataLine, lineStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#8ecae6' }, { offset: 1, color: '#bde0fe' }] }, width: 4, shadowColor: 'rgba(0, 243, 255, 0.8)', shadowBlur: 20 }, areaStyle: { opacity: 0.8, color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(100, 200, 255, 0.4)' }, { offset: 1, color: 'rgba(0, 0, 0, 0)' }]) }, labelLayout: { hideOverlap: false }, markPoint: { symbol: 'circle', symbolSize: 0, label: { show: true, color: '#fff', lineHeight: 18 }, itemStyle: { color: 'transparent' }, data: [{ coord: ['2009', 100], label: { position: 'top', align: 'left', formatter: '{title|EARLY YEARS}\n{body|Early exposure through club culture,\nelectronic music communities,\nand word-of-mouth circulation.}', rich: { title: { color: '#fff', fontSize: 16, fontWeight: 'bold', padding: [0, 0, 2, 0] }, body: { color: '#aaa', fontSize: 12, lineHeight: 16, align: 'left', width: 220 } } } }, { coord: ['2015', 200], label: { position: 'top', align: 'center', formatter: '{body|Random Access Memories\nmarked a shift toward\nmainstream visibility.}', rich: { body: { color: '#ccc', fontSize: 12, lineHeight: 16, align: 'center', width: 180 } } } }, { coord: ['2019', 390], label: { position: 'top', align: 'left', formatter: '{body|Collective re-listening\nfollowing a major career\nannouncement.}', rich: { body: { color: '#ccc', fontSize: 12, lineHeight: 16, align: 'left', width: 180 } } } }, { coord: ['2025', 520], label: { position: 'top', align: 'right', formatter: '{body|An enduring presence\nbeyond active creation.}', rich: { body: { color: '#fff', fontSize: 12, lineHeight: 16, align: 'right', width: 150 } } } }] } }, { name: 'Growth Rate', type: 'line', yAxisIndex: 1, smooth: 0.4, symbol: 'none', data: yDataGrowth, lineStyle: { type: 'dashed', width: 3, color: '#fff', opacity: 0.5 }, z: 0 }]
+      });
+
+      chartGraphFull = echarts.init(document.getElementById('chart-graph-full'));
+      const songs = [{ name: 'Around The World', color: '#FF0055', desc: 'Looping House' }, { name: 'One More Time', color: '#F53794', desc: 'French House' }, { name: 'Harder Better\nFaster Stronger', color: '#537EC5', desc: 'Vocoder Tech' }, { name: 'Robot Rock', color: '#cccccc', desc: 'Industrial' }, { name: 'Technologic', color: '#a1a1aa', desc: 'Minimal' }, { name: 'Get Lucky', color: '#FFD700', desc: 'Disco Funk' }, { name: 'Instant Crush', color: '#00F3FF', desc: 'Indie Pop' }, { name: 'Starboy (Prod.)', color: '#8E2DE2', desc: 'R&B Collab' }];
+      const synthsList = ["Roland TB-303", "Roland TR-909", "Roland TR-808", "Korg MS-20", "Minimoog Voyager", "EMS Synthi AKS", "Oberheim OB-Xa", "ARP Odyssey", "LinnDrum", "Roland Juno-106", "Yamaha CS-80", "Sequential Prophet-5", "Digitech Talker", "Ensoniq ASR-10", "E-mu SP-1200", "Alesis 3630", "Moog Modular", "Oberheim Matrix", "Voyetra Eight", "OSCar", "Roland SH-101", "Wurlitzer 200A", "Hohner Clavinet", "Mellotron", "Roland VP-330", "System-700", "Fairlight CMI", "Synclavier II", "Nord Lead", "Moog One", "Fender Rhodes", "Talkbox", "Custom Modular"];
+      const nodes = [];
+      synthsList.forEach(synth => { nodes.push({ name: synth, value: 1, symbolSize: 4, category: 'Synth', itemStyle: { color: '#666' }, label: { show: true, position: 'left', color: '#888', fontSize: 10, rotate: 'tangential' } }); });
+      songs.forEach(song => { nodes.push({ name: song.name, value: 10, symbol: 'circle', symbolSize: 40, category: 'Song', itemStyle: { color: song.color, shadowBlur: 30, shadowColor: song.color, borderColor: '#fff', borderWidth: 1 }, label: { show: true, position: 'right', color: '#fff', fontWeight: 'bold', fontSize: 12, rotate: 'tangential', distance: 10 }, targetColor: song.color }); });
+      const links = [];
+      synthsList.forEach((synth) => {
+        const targetCount = Math.floor(Math.random() * 4) + 2;
+        for (let i = 0; i < targetCount; i++) {
+          const randomSongIndex = Math.floor(Math.random() * songs.length);
+          const targetSong = songs[randomSongIndex];
+          links.push({ source: synth, target: targetSong.name, lineStyle: { color: targetSong.color, opacity: 0.4, curveness: 0.3 } });
+        }
+      });
+      chartGraphFull.setOption({
+        backgroundColor: 'transparent', title: { text: 'SYNTHESIS\nENGINE', subtext: 'Gear & Track\nDependency Matrix', right: '5%', top: 'center', textAlign: 'right', textStyle: { color: '#fff', fontSize: 48, fontFamily: 'Inter', fontWeight: '900', letterSpacing: 2, lineHeight: 40 }, subtextStyle: { color: '#00f3ff', fontSize: 12, letterSpacing: 1, lineHeight: 20 } },
+        tooltip: { trigger: 'item', backgroundColor: 'rgba(0,0,0,0.9)', borderColor: '#333', textStyle: { color: '#fff' }, series: [{ type: 'graph', layout: 'circular', circular: { rotateLabel: true }, data: nodes, links: links, roam: true, center: ['25%', '60%'], zoom: 0.6, scaleLimit: { min: 0.4, max: 2 }, itemStyle: { borderColor: '#000', borderWidth: 1 }, lineStyle: { width: 1, curveness: 0.5 }, emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 1 } } }] }
+      });
+      chartGraphFull.setOption({
+        series: [{ type: 'graph', layout: 'circular', circular: { rotateLabel: true }, data: nodes, links: links, roam: true, center: ['70%', '60%'], zoom: 0.6, scaleLimit: { min: 0.4, max: 2 }, itemStyle: { borderColor: '#000', borderWidth: 1 }, lineStyle: { width: 1, curveness: 0.5 }, emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 1 } } }]
+      });
+
+      window.addEventListener('resize', () => { [chartAccoladesPie, chartOrgBar, chartGrammyLine, chartRadarFull, chartMapFull, chartLineFull, chartGraphFull].forEach(c => c && c.resize()); });
+    };
+
+    /* =========================================================
+       NEW: Word Cloud Generator
+    ========================================================== */
+    const initWordCloud = () => {
+      const container = document.getElementById('word-cloud-container');
+      if (!container) return;
+
+      const words = [
+        "LOVE", "TOUCH", "MUSIC", "NIGHT", "GET", "LUCKY", "UP", "LIFE", "GIVE", "BACK",
+        "DANCE", "MORE", "NEED", "DREAM", "TIME", "WORLD", "REMEMBER", "HOLD", "ON", "FRIEND",
+        "ALONE", "AGAIN", "SUN", "FEEL", "LIGHT", "WAY", "DOOR", "LOST", "NAME", "SOUL"
+      ];
+
+      let html = '';
+
+      words.forEach((word, index) => {
+        let sizeClass, colorClass, extraStyle = '';
+
+        if (index < 3) {
+          sizeClass = 'text-7xl md:text-9xl font-black';
+          if (index === 0) colorClass = 'text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 stroke-text';
+          if (index === 1) colorClass = 'text-white opacity-90';
+          if (index === 2) colorClass = 'text-cyan-400 mix-blend-screen';
+        } else if (index < 10) {
+          sizeClass = 'text-4xl md:text-7xl font-bold';
+          colorClass = index % 2 === 0 ? 'text-yellow-400' : 'text-gray-200';
+        } else if (index < 20) {
+          sizeClass = 'text-2xl md:text-5xl font-bold';
+          colorClass = 'text-gray-500 hover:text-white transition-colors';
+        } else {
+          sizeClass = 'text-xl md:text-3xl font-light font-mono';
+          colorClass = 'text-gray-700';
+        }
+
+        const randomMargin = Math.floor(Math.random() * 20) + 10 + 'px';
+        const randomRotate = (Math.random() * 20 - 10).toFixed(1) + 'deg';
+
+        extraStyle = `margin: ${randomMargin}; --tag-rotate: ${randomRotate};`;
+
+        html += `<span class="word-tag ${sizeClass} ${colorClass} cursor-default select-none" style="${extraStyle}">${word}</span>`;
+      });
+
+      container.innerHTML = html;
+    };
+
+    const initInteractions = () => {
+      gsap.registerPlugin(ScrollTrigger);
+      gsap.utils.toArray('.gs-reveal').forEach(elem => { gsap.fromTo(elem, { y: 50, opacity: 0 }, { scrollTrigger: { trigger: elem, start: "top 85%" }, y: 0, opacity: 1, duration: 1 }); });
+      const groups = document.querySelectorAll('.timeline-node-group');
+      groups.forEach((group, i) => {
+        const card = group.querySelector('.visual-card'); const line = group.querySelector('.connector-line');
+        const isLeft = i % 2 === 0; const startRot = isLeft ? -75 : 75; const midRot = isLeft ? -5 : 5;
+        gsap.set(card, { transformOrigin: isLeft ? "120% 50% -800px" : "-20% 50% -800px", rotationY: startRot, opacity: 0.2, z: -1000, scale: 0.6, filter: "grayscale(100%) blur(4px)" });
+        gsap.set(line, { scaleX: 0, opacity: 0 });
+        const tl = gsap.timeline({ scrollTrigger: { trigger: group, start: "top 120%", end: "bottom -20%", scrub: 6 } });
+        tl.to(card, { rotationY: midRot, z: 0, scale: 1.3, opacity: 1, filter: "grayscale(0%) blur(0px)", ease: "power1.inOut", duration: 1 })
+          .to(line, { scaleX: 1, opacity: 1, duration: 0.5, ease: "power2.out" }, "<0.2")
+          .to(card, { rotationY: startRot, z: -1000, scale: 0.6, opacity: 0.2, filter: "grayscale(100%) blur(4px)", ease: "power1.inOut", duration: 1 })
+          .to(line, { scaleX: 0, opacity: 0, duration: 0.5 }, "<0.3");
+      });
+
+      const detailModal = document.getElementById('album-detail-modal');
+      window.openAlbumDetail = (key) => {
+        const data = getDetailData(key);
+        document.getElementById('detail-img').src = data.img;
+        document.getElementById('detail-year').innerText = data.year;
+        document.getElementById('detail-title').innerText = data.title;
+        document.getElementById('detail-desc').innerText = data.desc;
+        document.getElementById('detail-type').innerText = data.type;
+        document.getElementById('detail-meta').innerText = data.meta;
+        const trackContainer = document.getElementById('detail-tracks');
+        if (data.tracks && data.tracks.length > 0) {
+          const trackHtml = data.tracks.map((track, i) => `
+            <div class="track-item gs-track-item opacity-0 transform translate-y-2">
+              <div class="flex items-center flex-grow"><span class="track-index">${(i + 1).toString().padStart(2, '0')}</span><span class="track-title">${track.title}</span></div>
+              ${track.url ? `<a href="${track.url}" target="_blank" class="yt-link" title="Listen on YouTube"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg></a>` : ''}
+            </div>
+          `).join('');
+          trackContainer.innerHTML = trackHtml;
+        } else { trackContainer.innerHTML = '<div class="text-gray-600 text-sm py-4 italic">Tracklist not available for this entry.</div>'; }
+        detailModal.classList.remove('hidden'); void detailModal.offsetWidth; detailModal.classList.remove('opacity-0');
+        gsap.fromTo('.gs-detail-left', { x: -50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 });
+        gsap.fromTo('.gs-detail-right', { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, delay: 0.1 });
+        if (data.tracks && data.tracks.length > 0) gsap.fromTo('.gs-track-item', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.05, delay: 0.3 });
+      };
+      document.getElementById('close-detail').addEventListener('click', () => { detailModal.classList.add('opacity-0'); setTimeout(() => detailModal.classList.add('hidden'), 500); });
+
+      const dataModal = document.getElementById('data-modal');
+      const btnOpenData = document.getElementById('nav-btn-data');
+      const btnCloseData = document.getElementById('btn-close-modal');
+      btnOpenData.addEventListener('click', () => {
+        dataModal.classList.remove('hidden'); setTimeout(() => dataModal.classList.remove('opacity-0'), 10);
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => { [chartAccoladesPie, chartOrgBar, chartGrammyLine, chartRadarFull, chartMapFull, chartLineFull, chartGraphFull].forEach(c => c && c.resize()); }, 120);
+      });
+      btnCloseData.addEventListener('click', () => {
+        dataModal.classList.add('opacity-0'); setTimeout(() => { dataModal.classList.add('hidden'); document.body.style.overflow = 'auto'; }, 700);
+      });
+    };
+
+    /* =========================
+       NEW: Init Gallery Draggable (Snap + Zoom)
+    ========================== */
+    const initGallery = () => {
+      const track = document.getElementById('gallery-track');
+      const slides = Array.from(document.querySelectorAll('.gallery-slide'));
+      if(!track || slides.length === 0) return;
+
+      let currentIndex = 2; // Start at center (0,1,2,3,4)
+
+      let isDragging = false;
+      let startX = 0;
+
+      function updateGalleryPosition() {
+        const centerIndex = 2;
+        const offset = (centerIndex - currentIndex) * 320;
+        track.style.transform = `translateX(${offset}px)`;
+
+        slides.forEach((slide, index) => {
+          slide.classList.remove('active');
+          if(index === currentIndex) slide.classList.add('active');
+        });
+      }
+
+      const viewport = document.getElementById('gallery-viewport');
+
+      viewport.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.pageX;
+        viewport.style.cursor = 'grabbing';
+        track.style.transition = 'none';
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        viewport.style.cursor = 'grab';
+        track.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        updateGalleryPosition();
+      });
+
+      viewport.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const x = e.pageX;
+        const walk = (x - startX);
+
+        if (walk > 100) {
+          if (currentIndex > 0) { currentIndex--; startX = x; }
+        } else if (walk < -100) {
+          if (currentIndex < slides.length - 1) { currentIndex++; startX = x; }
+        }
+      });
+
+      updateGalleryPosition();
+    };
+
+    renderTimeline();
+    setTimeout(() => {
+      initStarfield();
+      initThreeJS();
+      initCharts();
+      initInteractions();
+      initGallery();
+      initWordCloud();
+    }, 50);
+
+  </script>
+</body>
+</html>
